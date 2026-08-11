@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     langsmith_api_key: SecretStr | None = None
     langsmith_tracing: bool = False
     secret_key: SecretStr | None = None
+    rag_similarity_threshold: float = 0.55
+    rag_top_k: int = 5
+    qdrant_collection_name: str = "keystone_policy_documents"
 
     @property
     def async_database_url(self) -> str:

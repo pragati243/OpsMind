@@ -13,12 +13,11 @@ dependencies = [
   "langgraph-checkpoint-postgres", "langchain-core", "langsmith",
   "qdrant-client", "sqlglot", "redis", "groq", "python-dotenv",
   "httpx", "pytest", "pytest-asyncio", "ragas", "deepeval",
-  "llm-guard", "guardrails-ai",
+  "llm-guard", "guardrails-ai", "sentence-transformers",
 ]
 
 [tool.setuptools.packages.find]
 include = ["app*"]
 
 [tool.pytest.ini_options]
-asyncio_mode = "auto"
 testpaths = ["tests"]
