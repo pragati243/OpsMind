@@ -37,8 +37,8 @@ class RouterNode:
     """Route requests, applying deterministic refusal checks before any LLM call."""
 
     def __init__(self, llm_client: LLMClient | None = None, confidence_threshold: float | None = None) -> None:
-        settings = get_settings() if llm_client is None or confidence_threshold is None else None
-        self._llm_client = llm_client or GroqLLMClient()
+        settings = get_settings() if confidence_threshold is None else None
+        self._llm_client = llm_client
         self._confidence_threshold = (
             confidence_threshold if confidence_threshold is not None else settings.router_confidence_threshold
         )
@@ -54,9 +54,11 @@ class RouterNode:
                 message="I cannot speculate without verified policy or operational data.",
             )
         try:
+            if self._llm_client is None:
+                self._llm_client = GroqLLMClient()
             response = await self._llm_client.generate(ROUTER_PROMPT, question)
             classification = RouterClassification.model_validate(json.loads(_strip_code_fence(response)))
-        except (json.JSONDecodeError, ValidationError, RuntimeError, ValueError):
+        except (ImportError, json.JSONDecodeError, ValidationError, RuntimeError, ValueError):
             return self._vague()
         if classification.confidence < self._confidence_threshold:
             return self._vague(classification.confidence)
