@@ -1,0 +1,1 @@
+"""RBAC predicate placeholder."""

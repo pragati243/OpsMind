@@ -1,0 +1,1 @@
+"""Document seed script placeholder."""

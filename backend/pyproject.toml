@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "keystone-backend"
+version = "0.1.0"
+description = "Keystone AI Operations Copilot backend"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi", "uvicorn[standard]", "pydantic", "pydantic-settings",
+  "sqlalchemy[asyncio]", "asyncpg", "alembic", "langgraph",
+  "langgraph-checkpoint-postgres", "langchain-core", "langsmith",
+  "qdrant-client", "sqlglot", "redis", "groq", "python-dotenv",
+  "httpx", "pytest", "pytest-asyncio", "ragas", "deepeval",
+  "llm-guard", "guardrails-ai",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
