@@ -13,3 +13,4 @@ class Text2SQLResult(BaseModel):
     rows: list[dict[str, Any]] = Field(default_factory=list)
     explanation: str = ""
     rejection_reason: str | None = None
+    sql_validation: dict[str, str | bool | None] = Field(default_factory=dict)

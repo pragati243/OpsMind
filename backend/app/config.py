@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     rag_top_k: int = 5
     qdrant_collection_name: str = "keystone_policy_documents"
     sql_max_row_limit: int = 100
+    router_confidence_threshold: float = 0.75
 
     @property
     def async_database_url(self) -> str:

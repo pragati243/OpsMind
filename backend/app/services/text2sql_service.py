@@ -27,7 +27,11 @@ class Text2SQLService:
     async def run_text2sql(self, question: str) -> Text2SQLResult:
         """Generate, validate, execute, then explain SQL results for a non-empty question."""
         if not question.strip():
-            return Text2SQLResult(valid=False, rejection_reason="question must not be blank")
+            return Text2SQLResult(
+                valid=False,
+                rejection_reason="question must not be blank",
+                sql_validation={"valid": False, "reason": "question must not be blank"},
+            )
         generated_sql = _extract_sql(
             await self._llm_client.generate(
                 SQL_SYSTEM_PROMPT,
@@ -36,14 +40,24 @@ class Text2SQLService:
         )
         validation, safe_sql = validate_sql(generated_sql, BUSINESS_SCHEMA, self._max_row_limit)
         if not validation.valid:
-            return Text2SQLResult(valid=False, rejection_reason=validation.reason)
+            return Text2SQLResult(
+                valid=False,
+                rejection_reason=validation.reason,
+                sql_validation={"valid": False, "reason": validation.reason},
+            )
 
         rows = await execute_readonly(safe_sql)
         explanation = await self._llm_client.generate(
             EXPLANATION_SYSTEM_PROMPT,
             f"Question: {question}\n\nActual returned rows:\n{json.dumps(rows, default=str)}",
         )
-        return Text2SQLResult(valid=True, sql=safe_sql, rows=rows, explanation=explanation)
+        return Text2SQLResult(
+            valid=True,
+            sql=safe_sql,
+            rows=rows,
+            explanation=explanation,
+            sql_validation={"valid": True, "reason": None},
+        )
 
 
 def _extract_sql(text: str) -> str:
