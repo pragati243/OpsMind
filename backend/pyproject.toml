@@ -12,9 +12,12 @@ dependencies = [
   "sqlalchemy[asyncio]", "asyncpg", "alembic", "langgraph",
   "langgraph-checkpoint-postgres", "langchain-core", "langsmith",
   "qdrant-client", "sqlglot", "redis", "groq", "python-dotenv",
-  "httpx", "pytest", "pytest-asyncio", "ragas", "deepeval",
-  "llm-guard", "guardrails-ai", "sentence-transformers",
+  "httpx", "pytest", "pytest-asyncio", "sentence-transformers", "bcrypt",
 ]
+
+[project.optional-dependencies]
+eval = ["ragas", "deepeval"]
+guardrails = ["llm-guard", "guardrails-ai"]
 
 [tool.setuptools.packages.find]
 include = ["app*"]

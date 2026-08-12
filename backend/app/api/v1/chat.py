@@ -2,15 +2,18 @@
 
 import asyncio
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 
 from app.agent.nodes.router_node import RouterNode
 from app.core.llm_client import GroqLLMClient, LLMClient
+from app.core.security import RESTRICTED_IDENTITY, ResolvedIdentity, resolve_identity
 from app.schemas.chat import AskRequest, AskResponse
 from app.schemas.rag import RAGResult
 from app.schemas.text2sql import Text2SQLResult
 from app.services.rag_service import RAGService
 from app.services.text2sql_service import Text2SQLService
+from app.guardrails.input_guard import inspect as inspect_input
+from app.guardrails.output_guard import validate_schema, check_numeric_claims
 
 router = APIRouter(prefix="/api/v1", tags=["chat"])
 SYNTHESIS_PROMPT = """Produce only a concise recommended action based strictly on the supplied policy answer
@@ -33,7 +36,7 @@ class ChatService:
         self._text2sql_service = text2sql_service
         self._llm_client = llm_client
 
-    async def ask(self, question: str) -> AskResponse:
+    async def ask(self, question: str, user: ResolvedIdentity = RESTRICTED_IDENTITY) -> AskResponse:
         """Route a question and return only evidence-backed service output."""
         decision = await self._router.route(question)
         if decision.query_type in {"refused", "vague"}:
@@ -44,20 +47,26 @@ class ChatService:
                 refusal_reason=decision.message,
             )
         if decision.query_type == "document":
-            rag_result = await self._get_rag_service().run_rag(question)
-            return AskResponse(
+            rag_result = await self._get_rag_service().run_rag(question, user)
+            resp = AskResponse(
                 question=question,
                 query_type="document",
                 answer=rag_result.answer,
                 citations=rag_result.citations,
                 refusal_reason=None if rag_result.grounded else rag_result.answer,
             )
+            # attach underlying rag_result for downstream output guards
+            try:
+                resp._rag_result = rag_result
+            except Exception:
+                pass
+            return resp
         if decision.query_type == "data":
             sql_result = await self._get_text2sql_service().run_text2sql(question)
             return self._data_response(question, sql_result)
 
         rag_result, sql_result = await asyncio.gather(
-            self._get_rag_service().run_rag(question),
+            self._get_rag_service().run_rag(question, user),
             self._get_text2sql_service().run_text2sql(question),
         )
         if not rag_result.grounded or not sql_result.valid:
@@ -130,7 +139,54 @@ def get_chat_service() -> ChatService:
     return ChatService()
 
 
+async def get_request_identity(x_api_key: str | None = Header(default=None)) -> ResolvedIdentity:
+    """Resolve a request API key to a fail-closed identity before retrieval is dispatched."""
+    return await resolve_identity(x_api_key)
+
+
 @router.post("/ask", response_model=AskResponse)
-async def ask(request: AskRequest, service: ChatService = Depends(get_chat_service)) -> AskResponse:
+async def ask(
+    request: AskRequest,
+    service: ChatService = Depends(get_chat_service),
+    user: ResolvedIdentity = Depends(get_request_identity),
+) -> AskResponse:
     """Answer a routed operations question using the appropriate safe pipeline."""
-    return await service.ask(request.question)
+    # Run input guard: refuse on injection, otherwise redact PII before routing.
+    inspection = inspect_input(request.question)
+    if inspection.refused:
+        return AskResponse(
+            question=request.question,
+            query_type="refused",
+            answer="Request refused: prompt injection detected.",
+            refusal_reason=inspection.refusal_reason,
+        )
+
+    # use the redacted question downstream
+    response = await service.ask(inspection.redacted, user)
+
+    # Validate final response parses against the schema (one retry not supported here)
+    try:
+        validate_schema(response.dict(), AskResponse)
+    except Exception:
+        return AskResponse(
+            question=request.question,
+            query_type="refused",
+            answer="Response generation failed schema validation.",
+            refusal_reason="output_schema_validation",
+        )
+
+    # If the response came from RAG, cross-check numeric claims against retrieved chunks
+    mismatches = []
+    try:
+        rag_result = getattr(response, "_rag_result", None)
+        if rag_result is not None:
+            retrieved_texts = [getattr(c, "text", "") for c in getattr(rag_result, "_retrieved_chunks", [])]
+            mismatches = check_numeric_claims(response.answer or "", retrieved_texts)
+    except Exception:
+        mismatches = []
+
+    if mismatches:
+        # Flag the issue rather than silently returning potentially incorrect numeric claims
+        response.refusal_reason = f"numeric_mismatch: {mismatches}"
+
+    return response

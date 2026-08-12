@@ -1,6 +1,6 @@
 """Document persistence model."""
 
-from sqlalchemy import String, Text
+from sqlalchemy import Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models import TimestampedModel
@@ -15,3 +15,6 @@ class Document(TimestampedModel):
     title: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     source_path: Mapped[str] = mapped_column(String(512), unique=True)
     content: Mapped[str] = mapped_column(Text)
+    sensitivity_tier: Mapped[str] = mapped_column(String(30), default="public")
+    min_clearance_level: Mapped[int] = mapped_column(Integer, default=1)
+    owning_department: Mapped[str] = mapped_column(String(100), default="Operations")

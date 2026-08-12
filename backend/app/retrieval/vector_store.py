@@ -10,6 +10,15 @@ from uuid import uuid5, NAMESPACE_URL
 from app.config import get_settings
 from app.retrieval.chunking import DocumentChunk, chunk_markdown
 
+DOCUMENT_ACCESS = {
+    "incident_response_policy.md": (1, "Operations"),
+    "escalation_policy.md": (1, "Operations"),
+    "on_call_rotation.md": (1, "Platform Engineering"),
+    "sla_definitions.md": (1, "Operations"),
+    "service_ownership.md": (1, "Engineering Management"),
+    "postmortem_process.md": (3, "Platform Engineering"),
+}
+
 
 class EmbeddingProvider(ABC):
     """Define the embedding boundary used by retrieval providers."""
@@ -89,6 +98,7 @@ class QdrantVectorStore:
                     distance=models.Distance.COSINE,
                 ),
             )
+        await self._ensure_payload_indexes()
         chunks = list(self._load_chunks())
         if chunks:
             from qdrant_client import models
@@ -103,6 +113,8 @@ class QdrantVectorStore:
                         "section": chunk.section,
                         "text": chunk.text,
                         "chunk_id": chunk.chunk_id,
+                        "required_clearance_level": DOCUMENT_ACCESS[chunk.doc_name][0],
+                        "owning_department": DOCUMENT_ACCESS[chunk.doc_name][1],
                     },
                 )
                 for chunk, vector in zip(chunks, vectors, strict=True)
@@ -110,7 +122,7 @@ class QdrantVectorStore:
             await self._client.upsert(collection_name=self._collection_name, points=points, wait=True)
         self._initialized = True
 
-    async def search(self, query: str, limit: int) -> list[tuple[DocumentChunk, float]]:
+    async def search(self, query: str, limit: int, query_filter: Any | None = None) -> list[tuple[DocumentChunk, float]]:
         """Return the highest-scoring chunks for a non-empty query.
 
         Raises:
@@ -128,6 +140,7 @@ class QdrantVectorStore:
             query=vector,
             limit=limit,
             with_payload=True,
+            query_filter=query_filter,
         )
         results: list[tuple[DocumentChunk, float]] = []
         for point in response.points:
@@ -144,6 +157,23 @@ class QdrantVectorStore:
                 )
             )
         return results
+
+    async def _ensure_payload_indexes(self) -> None:
+        """Create keyword/range indexes required for server-side permission filtering."""
+        from qdrant_client import models
+
+        await self._client.create_payload_index(
+            collection_name=self._collection_name,
+            field_name="required_clearance_level",
+            field_schema=models.PayloadSchemaType.INTEGER,
+            wait=True,
+        )
+        await self._client.create_payload_index(
+            collection_name=self._collection_name,
+            field_name="owning_department",
+            field_schema=models.PayloadSchemaType.KEYWORD,
+            wait=True,
+        )
 
     def _load_chunks(self) -> Iterable[DocumentChunk]:
         """Read all markdown policy documents and yield section-aware chunks."""

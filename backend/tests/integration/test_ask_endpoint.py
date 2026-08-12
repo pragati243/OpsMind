@@ -31,7 +31,7 @@ class RoutingLLM(LLMClient):
 class FakeRAGService:
     """Return a grounded policy result without Qdrant or an LLM provider."""
 
-    async def run_rag(self, question: str) -> RAGResult:
+    async def run_rag(self, question: str, user) -> RAGResult:
         """Return a stable cited policy response."""
         return RAGResult(
             answer="P1 incidents must be acknowledged within 10 minutes.",

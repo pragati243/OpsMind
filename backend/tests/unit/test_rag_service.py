@@ -8,13 +8,20 @@ from app.schemas.rag import RAGResult
 from app.services.rag_service import RAGService
 
 
+class TestUser:
+    """Provide an authorized principal for isolated RAG tests."""
+
+    clearance_level = 4
+    department = "Platform Engineering"
+
+
 class FakeVectorStore:
     """Return deterministic retrieval results without Qdrant."""
 
     def __init__(self, results: list[tuple[DocumentChunk, float]]) -> None:
         self.results = results
 
-    async def search(self, query: str, limit: int) -> list[tuple[DocumentChunk, float]]:
+    async def search(self, query: str, limit: int, query_filter=None) -> list[tuple[DocumentChunk, float]]:
         """Return configured results for any test query."""
         return self.results[:limit]
 
@@ -37,7 +44,7 @@ def test_answerable_query_returns_citations() -> None:
     llm = FakeLLMClient()
     service = RAGService(FakeVectorStore([(chunk, 0.91)]), llm, similarity_threshold=0.55)
 
-    result: RAGResult = asyncio.run(service.run_rag("What is the P1 acknowledgement target?"))
+    result: RAGResult = asyncio.run(service.run_rag("What is the P1 acknowledgement target?", TestUser()))
 
     assert result.grounded is True
     assert result.citations[0].doc_name == "sla_definitions.md"
@@ -50,7 +57,7 @@ def test_unanswerable_query_refuses_without_citations() -> None:
     llm = FakeLLMClient()
     service = RAGService(FakeVectorStore([(chunk, 0.12)]), llm, similarity_threshold=0.55)
 
-    result = asyncio.run(service.run_rag("What is the company holiday party menu?"))
+    result = asyncio.run(service.run_rag("What is the company holiday party menu?", TestUser()))
 
     assert result.grounded is False
     assert result.citations == []

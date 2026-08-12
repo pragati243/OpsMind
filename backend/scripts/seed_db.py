@@ -2,13 +2,16 @@
 
 import asyncio
 from datetime import timedelta
+from pathlib import Path
 
 from sqlalchemy import select
 
 from app.core.database import async_session_factory
 from app.models import utcnow
+from app.models.document import Document
 from app.models.incident import Incident
 from app.models.on_call_schedule import OnCallSchedule
+from app.models.user import User
 
 SERVICES = (
     "payments-api",
@@ -20,6 +23,22 @@ SERVICES = (
 )
 
 ENGINEERS = ("Ava Patel", "Noah Kim", "Mia Chen", "Liam Okafor", "Sofia Garcia", "Ethan Brooks")
+
+DEMO_USERS = (
+    ("Iris Intern", "Intern", "Operations", 1),
+    ("Sam Support", "Support Agent", "Customer Support", 2),
+    ("Riley SRE", "SRE", "Platform Engineering", 3),
+    ("Morgan Manager", "Manager", "Engineering Management", 4),
+)
+
+DOCUMENT_SENSITIVITY = {
+    "incident_response_policy.md": ("public", 1, "Operations"),
+    "escalation_policy.md": ("public", 1, "Operations"),
+    "on_call_rotation.md": ("public", 1, "Platform Engineering"),
+    "sla_definitions.md": ("public", 1, "Operations"),
+    "service_ownership.md": ("public", 1, "Engineering Management"),
+    "postmortem_process.md": ("restricted", 3, "Platform Engineering"),
+}
 
 TITLES = {
     "payments-api": ("Payment authorization latency elevated", "Card capture requests returning 5xx"),
@@ -73,6 +92,38 @@ async def seed() -> None:
         existing = await session.scalar(select(Incident.id).limit(1))
         if existing is None:
             session.add_all(build_incidents())
+
+        for name, role, department, clearance_level in DEMO_USERS:
+            user = await session.scalar(select(User).where(User.name == name))
+            if user is None:
+                session.add(
+                    User(
+                        name=name,
+                        role=role,
+                        department=department,
+                        clearance_level=clearance_level,
+                    )
+                )
+
+        documents_path = Path(__file__).resolve().parents[1] / "app" / "data" / "documents"
+        for path in sorted(documents_path.glob("*.md")):
+            sensitivity_tier, min_clearance_level, owning_department = DOCUMENT_SENSITIVITY[path.name]
+            document = await session.scalar(select(Document).where(Document.source_path == str(path)))
+            if document is None:
+                session.add(
+                    Document(
+                        title=path.stem.replace("_", " ").title(),
+                        source_path=str(path),
+                        content=path.read_text(encoding="utf-8"),
+                        sensitivity_tier=sensitivity_tier,
+                        min_clearance_level=min_clearance_level,
+                        owning_department=owning_department,
+                    )
+                )
+            else:
+                document.sensitivity_tier = sensitivity_tier
+                document.min_clearance_level = min_clearance_level
+                document.owning_department = owning_department
 
         week_start = (utcnow().date() - timedelta(days=utcnow().weekday()))
         for index, service in enumerate(SERVICES):

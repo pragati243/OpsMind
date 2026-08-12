@@ -13,6 +13,7 @@ from app.models import Base
 from app.models.document import Document
 from app.models.incident import Incident
 from app.models.on_call_schedule import OnCallSchedule
+from app.models.user import ApiKey, User
 
 config = context.config
 config.set_main_option("sqlalchemy.url", get_settings().async_database_url)
@@ -48,6 +49,7 @@ async def run_migrations_online() -> None:
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args=get_settings().async_database_connect_args,
     )
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
